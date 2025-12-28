@@ -1,0 +1,94 @@
+package com.example.mysensorapp
+
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Bundle
+import android.util.Log
+import androidx.appcompat.app.AppCompatActivity
+import kotlin.math.abs
+
+class MainActivity : AppCompatActivity(), SensorEventListener {
+
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+
+    private var lastX = 0f
+    private var lastY = 0f
+    private var lastZ = 0f
+    private var isFirstReading = true
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        // Initialize Sensor Manager
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Register the listener
+        accelerometer?.also { sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // CRITICAL: Unregister to stop battery drain when app is paused
+        sensorManager.unregisterListener(this)
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        event?.let {
+            val currentX = it.values[0]
+            val currentY = it.values[1]
+            val currentZ = it.values[2]
+
+            if (isFirstReading) {
+                lastX = currentX
+                lastY = currentY
+                lastZ = currentZ
+                isFirstReading = false
+                return
+            }
+
+            // Calculate the difference (delta)
+            val deltaX = abs(lastX - currentX)
+            val deltaY = abs(lastY - currentY)
+            val deltaZ = abs(lastZ - currentZ)
+
+            // LOGIC TO REMOVE SENSITIVITY:
+            // Only trigger if the change is BIGGER than the threshold.
+            // Otherwise, the code ignores the movement.
+            if (deltaX > SENSITIVITY_THRESHOLD || 
+                deltaY > SENSITIVITY_THRESHOLD || 
+                deltaZ > SENSITIVITY_THRESHOLD) {
+
+                // Movement detected! Perform your action here.
+                Log.d(TAG, "Significant movement detected: X:$currentX Y:$currentY Z:$currentZ")
+
+                // Update the last known values
+                lastX = currentX
+                lastY = currentY
+                lastZ = currentZ
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Usually not needed for basic sensitivity adjustment
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
+        // ADJUST THIS VALUE:
+        // Higher value = Less Sensitive (Removes more sensitivity)
+        // Lower value = More Sensitive
+        private const val SENSITIVITY_THRESHOLD = 2.5f
+    }
+}

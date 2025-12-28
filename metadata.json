@@ -1,0 +1,8 @@
+{
+  "name": "Nivra: Seizure Prediction Smart Band",
+  "description": "A cutting-edge medical platform for patients, caretakers, and doctors featuring real-time seizure prediction, NFC data sharing, and funky modern healthcare UI.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
