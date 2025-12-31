@@ -41,7 +41,7 @@ const AlertBanner: React.FC<Props> = ({ alert, onDismiss }) => {
                 <p className="text-xs uppercase font-bold text-white/70">Estimated Onset</p>
                 <p className="text-3xl font-black tracking-tighter">{formatTime(timeLeft)}</p>
               </div>
-              <button className="bg-white text-rose-600 font-bold px-4 py-2 rounded-xl text-sm shadow-lg active:scale-95 transition-transform">
+              <button onClick={onDismiss} className="bg-white text-rose-600 font-bold px-4 py-2 rounded-xl text-sm shadow-lg active:scale-95 transition-transform">
                 I'm Safe
               </button>
             </div>

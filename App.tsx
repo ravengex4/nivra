@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserRole, User, Alert } from './types';
+import { UserRole, User, Alert, DeviceStats } from './types';
 import PatientDashboard from './views/PatientDashboard';
 import HealthRecords from './views/HealthRecords';
 import CircleOfCare from './views/CircleOfCare';
@@ -182,6 +182,29 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : null;
   });
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [seizureHistory, setSeizureHistory] = useState<Array<{timestamp: string, readings: DeviceStats, minutesUntilSeizure: number}>>([]);
+  const [lastAlertTime, setLastAlertTime] = useState<number>(0);
+  const [readingIndex, setReadingIndex] = useState<number>(0);
+
+  // NIVRA 5-Minute Pre-Seizure Timeline
+  const pre_seizure_readings = [
+    [85, 36.6, 97],  // T minus 5 min: Subtle HR rise begins
+    [92, 36.7, 96],  // T minus 4 min: Trend is moving upward
+    [100, 36.8, 95], // T minus 3 min: Heart rate crosses resting threshold
+    [112, 36.9, 94], // T minus 2 min: Oxygen starts a slow decline
+    [125, 37.0, 92], // T minus 1 min: Critical threshold approached
+    [145, 37.5, 88]  // T minus 0 min: SEIZURE ATTACK (Full Alarm)
+  ];
+  const [device, setDevice] = useState<DeviceStats>(() => {
+    const [hr, temp, spo2] = pre_seizure_readings[0];
+    return {
+      heartRate: hr,
+      spo2: spo2,
+      temperature: temp,
+      battery: 88,
+      status: 'Connected'
+    };
+  });
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [view, setView] = useState<'AUTH' | 'DASHBOARD'>(() => {
     return localStorage.getItem('nivra_user') ? 'DASHBOARD' : 'AUTH';
@@ -245,7 +268,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [view]);
 
-  const triggerEmergency = useCallback(() => {
+  const triggerEmergency = useCallback((currentDevice: DeviceStats, minutesUntilSeizure: number) => {
     const newAlert: Alert = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'PREDICTION',
@@ -255,16 +278,62 @@ const App: React.FC = () => {
       countdown: 300,
     };
     setAlerts(prev => [newAlert, ...prev]);
+    setSeizureHistory(prev => [...prev, {
+      timestamp: new Date().toISOString(),
+      readings: currentDevice,
+      minutesUntilSeizure: minutesUntilSeizure
+    }]);
+  }, []);
+
+  const clearSeizureHistory = useCallback(() => {
+    setSeizureHistory([]);
   }, []);
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setReadingIndex(prev => {
+        const nextIndex = (prev + 1) % pre_seizure_readings.length;
+        const [hr, temp, spo2] = pre_seizure_readings[nextIndex];
+        setDevice({
+          heartRate: hr,
+          spo2: spo2,
+          temperature: temp,
+          battery: 88,
+          status: 'Connected'
+        });
+        return nextIndex;
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const predictSeizure = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            heart_rate: device.heartRate,
+            temperature: device.temperature,
+            spo2: device.spo2
+          })
+        });
+        const result = await response.json();
+        if (result.alarm && Date.now() - lastAlertTime > 60000) {
+          const minutesUntilSeizure = 5 - readingIndex;
+          triggerEmergency(device, minutesUntilSeizure);
+          setLastAlertTime(Date.now());
+        }
+      } catch (error) {
+        console.error('ML prediction failed:', error);
+      }
+    };
+
     if (user?.role === UserRole.PATIENT) {
-      const interval = setInterval(() => {
-        if (Math.random() > 0.98) triggerEmergency();
-      }, 30000);
-      return () => clearInterval(interval);
+      predictSeizure();
     }
-  }, [user, triggerEmergency]);
+  }, [device, user, triggerEmergency]);
 
   const renderActiveTab = () => {
     if (!user) return null;
@@ -272,7 +341,7 @@ const App: React.FC = () => {
     if (activeTab === 'records') return <HealthRecords user={user} />;
     if (activeTab === 'marketplace') return <CircleOfCare />;
     switch (user.role) {
-      case UserRole.PATIENT: return <PatientDashboard user={user} onTabChange={handleTabChange} bandImage={BandImage} />;
+      case UserRole.PATIENT: return <PatientDashboard user={user} onTabChange={handleTabChange} bandImage={BandImage} device={device} seizureHistory={seizureHistory} onClearSeizureHistory={clearSeizureHistory} />;
       default: return null;
     }
   };

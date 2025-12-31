@@ -31,6 +31,7 @@ export interface MedicalRecord {
 export interface DeviceStats {
   heartRate: number;
   spo2: number; // Oxygen saturation
+  temperature: number;
   battery: number;
   status: 'Connected' | 'Disconnected' | 'Syncing';
 }
